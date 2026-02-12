@@ -72,5 +72,5 @@ apt-purge() {
   read -q "?Proceed with sudo apt purge? [y/N] " || { echo "\nAborted."; return 1 }
   echo
 
-  sudo apt purge "${pkgs[@]}"
+  sudo apt purge -y "${pkgs[@]}"
 }

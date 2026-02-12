@@ -1,20 +1,20 @@
 update-kernel() {
   if [[ "$1" == "-h" || "$1" == "--help"  ]]; then
     cat <<'EOF'
-Usage: upkernel <vmlinuz-path>
+Usage: update-kernel <vmlinuz-path>
 
 Install a vmlinuz and update boot symlinks.
-Example: upkernel /boot/vmlinuz-5.10.0-18-amd64
+Example: update-kernel /boot/vmlinuz-5.10.0-18-amd64
 EOF
     return 0
   fi
 
   if (( $# == 0 )); then
-    upkernel -h
+    update-kernel -h
     return 1
   fi
 
-  local vmlinuz_path=${1:?"Usage: upkernel <vmlinuz-path>"}
+  local vmlinuz_path=${1:?"Usage: update-kernel <vmlinuz-path>"}
 
   if [[ ! -f "$vmlinuz_path" ]]; then
     echo "error: vmlinuz $vmlinuz_path not found"
