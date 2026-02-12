@@ -1,0 +1,76 @@
+apt-purge() {
+  local entries
+  entries=$(
+    {
+      for f in /var/log/apt/history.log.*(NnOn); do
+        [[ "$f" == *.gz ]] && zcat "$f" || cat "$f"
+      done
+      cat /var/log/apt/history.log 2>/dev/null
+    } | awk '
+      /^Start-Date:/ { date = substr($0, 13) }
+      /^Install:/    { install = substr($0, 10); capturing = 1; next }
+      capturing && /^ / { install = install $0; next }
+      capturing { print date " | " install; capturing = 0 }
+      END { if (capturing) print date " | " install }
+    '
+  )
+
+  [[ -z "$entries" ]] && { echo "No install records found."; return 1 }
+
+  local selected
+
+  if (( $+commands[fzf] )); then
+    # --tac: 输入是旧→新，tac 翻转后最新条目在最下方（紧贴 prompt）
+    selected=$(echo "$entries" | fzf --multi --tac \
+      --header="TAB = multi-select · ENTER = confirm · ESC = cancel" \
+      --preview='echo {} | sed "s/.*| //; s/), /)\n/g" | sed "s/^ *//; s/[: ].*//"' \
+      --preview-window=right:35%:wrap)
+  else
+    # fallback: 编号菜单，最新在最下方
+    local -a lines=("${(@f)entries}")
+    local i
+    echo "Install history (newest last):\n"
+    for i in {1..${#lines}}; do
+      printf "  \e[33m%3d\e[0m) %s\n" "$i" "${lines[$i]}"
+    done
+    echo
+    echo "Enter numbers to purge (space/comma separated, e.g. 3 5 7-9), empty to cancel:"
+    local input
+    read -r "input?"
+    [[ -z "$input" ]] && { echo "Cancelled."; return 0 }
+
+    # 展开范围表达式 (如 7-9 → 7 8 9)
+    local -a indices=()
+    local token
+    for token in ${(s:,:)input// /,}; do
+      if [[ "$token" == *-* ]]; then
+        local lo=${token%%-*} hi=${token##*-}
+        for (( j=lo; j<=hi; j++ )); do indices+=($j); done
+      else
+        indices+=($token)
+      fi
+    done
+
+    selected=""
+    for i in "${indices[@]}"; do
+      (( i >= 1 && i <= ${#lines} )) && selected+="${lines[$i]}"$'\n'
+    done
+    selected=${selected%$'\n'}
+  fi
+
+  [[ -z "$selected" ]] && { echo "Cancelled."; return 0 }
+
+  local -a pkgs
+  pkgs=($(echo "$selected" | sed 's/.*| //' | sed 's/), /)\n/g' | \
+    sed 's/^ *//; s/[: ].*//' | grep -v '^$' | sort -u))
+
+  (( ${#pkgs} == 0 )) && { echo "No packages extracted."; return 1 }
+
+  echo "\nPackages to purge (${#pkgs}):"
+  printf '  \e[31m%s\e[0m\n' "${pkgs[@]}"
+  echo
+  read -q "?Proceed with sudo apt purge? [y/N] " || { echo "\nAborted."; return 1 }
+  echo
+
+  sudo apt purge "${pkgs[@]}"
+}

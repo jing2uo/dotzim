@@ -1,0 +1,8 @@
+dcode() {
+	if [ $# -eq 0 ]; then
+		# 如果没有参数，从标准输入读取
+		base64 -d
+	else
+		echo "$1" | base64 -d
+	fi
+}

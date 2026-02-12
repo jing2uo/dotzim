@@ -1,0 +1,39 @@
+update-kernel() {
+  if [[ "$1" == "-h" || "$1" == "--help"  ]]; then
+    cat <<'EOF'
+Usage: upkernel <vmlinuz-path>
+
+Install a vmlinuz and update boot symlinks.
+Example: upkernel /boot/vmlinuz-5.10.0-18-amd64
+EOF
+    return 0
+  fi
+
+  if (( $# == 0 )); then
+    upkernel -h
+    return 1
+  fi
+
+  local vmlinuz_path=${1:?"Usage: upkernel <vmlinuz-path>"}
+
+  if [[ ! -f "$vmlinuz_path" ]]; then
+    echo "error: vmlinuz $vmlinuz_path not found"
+    return 1
+  fi
+
+  if (( ! ${+commands[linux-update-symlinks]} )); then
+    echo "error: linux-update-symlinks not found, please install it first"
+    return 1
+  fi
+
+  local vmlinuz_version="${vmlinuz_path##*/boot/vmlinuz-}"
+
+  sudo linux-update-symlinks install "$vmlinuz_version" "$vmlinuz_path" || return 1
+
+  echo "now:"
+  if (( ${+commands[eza]} )); then
+    eza -lh / | grep -E --color "$vmlinuz_version"
+  else
+    ls -lh / | grep -E --color "$vmlinuz_version"
+  fi
+}

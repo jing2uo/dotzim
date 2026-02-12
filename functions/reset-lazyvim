@@ -1,0 +1,19 @@
+#!/usr/bin/env zsh
+# Reset Neovim configuration and data, then install LazyVim starter
+
+reset-lazyvim() {
+    echo "Removing existing Neovim config and data..."
+    # 使用 (N) glob qualifier 避免无匹配时报错
+    rm -rf $HOME/.config/nvim*(N)
+    rm -rf $HOME/.local/share/nvim*(N)
+    rm -rf $HOME/.local/state/nvim*(N)
+    rm -rf $HOME/.cache/nvim*(N)
+
+    echo "Cloning LazyVim starter..."
+    git clone --depth 1 https://github.com/LazyVim/starter $HOME/.config/nvim || {
+        echo "Clone failed, please check network or permissions." >&2
+        return 1
+    }
+
+    echo "LazyVim starter installed successfully."
+}

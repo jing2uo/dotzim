@@ -1,0 +1,65 @@
+#!/usr/bin/env zsh
+# System maintenance: fix permissions, remove unwanted .desktop files, clean caches
+
+system-cleanup() {
+    # === 1. 修复权限和所有者 ===
+    echo "Setting ownership and permissions..."
+    sudo chown -R root:root /usr/local/bin/* /opt/
+    sudo chmod a+x /usr/local/bin/* "$HOME/.local/bin"/*(N) # (N) 避免无文件时报错
+
+    # === 2. 删除系统全局的 .desktop 文件 ===
+    echo "Removing unwanted system .desktop files..."
+    local -a sys_desktop=(
+        bleachbit-root.desktop
+        zellij.desktop
+        ranger.desktop
+        avahi-discover.desktop
+        bvnc.desktop
+        bssh.desktop
+        qv4l2.desktop
+        qvidcap.desktop
+        btop.desktop
+        htop.desktop
+        vim.desktop
+        nvim.desktop
+    )
+    for f in $sys_desktop; do
+        sudo find /usr/share/applications -name "$f" -exec rm -f {} +
+    done
+
+    # === 3. 删除 Flatpak 导出的 .desktop 文件 ===
+    echo "Removing unwanted Flatpak .desktop files..."
+    local -a flatpak_desktop=(
+        cn.wps.wps_365.xiezuo.desktop
+    )
+    for f in $flatpak_desktop; do
+        find "$HOME/.local/share/flatpak/exports/share/applications" -name "$f" -exec rm -f {} +
+    done
+
+    # === 4. 清理 ~/.cache 下各种构建/缓存目录 ===
+    echo "Cleaning cache directories..."
+    local -a cache_dirs=(
+        "$HOME/.cache/thumbnails"
+        "$HOME/.cache/staticcheck"
+        "$HOME/.cache/ms-playwright"
+        "$HOME/.cache/pip"
+        "$HOME/.cache/typescript"
+        "$HOME/.cache/clangd"
+        "$HOME/.cache/jedi"
+        "$HOME/.cache/uv"
+        "$HOME/.cache/go-build"
+        "$HOME/.cache/node-gyp"
+        "$HOME/.cache/gopls"
+        "$HOME/.cache/nvim"
+        "$HOME/.cache/mesa_shader_cache"
+        "$HOME/.cache/mesa_shader_cache_db"
+        "$HOME/.cache/mpv"
+    )
+    rm -rf $cache_dirs
+
+    # === 5. 删除 ~/Downloads 下所有 PNG 截图 ===
+    echo "Removing PNG files from Downloads..."
+    rm -f "$HOME/Downloads"/*.png
+
+    echo "System cleanup completed."
+}

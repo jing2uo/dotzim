@@ -1,0 +1,68 @@
+#!/usr/bin/env zsh
+# Update/Install Longbridge Desktop to the latest stable version
+
+update-longbridge() {
+  local stable_url="https://assets.lbkrs.com/github/release/longbridge-desktop/stable/latest.json"
+
+  echo
+  echo "Updating Longbridge..."
+
+  # Fetch latest stable version info
+  echo "Fetching latest stable version info..."
+  local latest_stable
+  latest_stable=$(curl --silent --compressed "$stable_url" | jq -r '.version')
+  if [[ -z "$latest_stable" ]]; then
+    echo "Failed to fetch latest version info, check network or API." >&2
+    return 1
+  fi
+  echo "Latest stable version: $latest_stable"
+
+  # Check if already installed
+  if ! command -v longbridge &>/dev/null; then
+    echo "Longbridge not installed, will install version $latest_stable"
+  else
+    # Get current version
+    local current_version
+    current_version=$(longbridge -V | awk '{print $2}')
+    echo "Current version: $current_version"
+
+    # Compare versions
+    local greater
+    greater=$(printf '%s\n%s\n' "$current_version" "$latest_stable" | sort -V | tail -1)
+
+    if [[ "$greater" == "$current_version" && "$current_version" != "$latest_stable" ]]; then
+      echo "Current version is newer than latest stable, no update needed."
+      return 0
+    elif [[ "$current_version" == "$latest_stable" ]]; then
+      echo "Already at latest stable version."
+      return 0
+    else
+      echo "New version available: $latest_stable, updating..."
+    fi
+  fi
+
+  # --- Download and install logic ---
+  rm -rf /tmp/lb.deb /tmp/lb
+
+  local download_url
+  download_url=$(curl --silent "$stable_url" --compressed |
+    jq -r '.assets[] | select(.name | test("linux-x86_64\\.deb$")).url')
+  if [[ -z "$download_url" ]]; then
+    echo "Failed to fetch download URL." >&2
+    return 1
+  fi
+
+  echo "Downloading package..."
+  wget -q "$download_url" -O /tmp/lb.deb || {
+    echo "Download failed." >&2
+    rm -f /tmp/lb.deb
+    return 1
+  }
+
+  dpkg-deb -x /tmp/lb.deb /tmp/lb
+  sudo mv /tmp/lb/usr/local/bin/longbridge /usr/local/bin/longbridge
+  sudo chown root:root /usr/local/bin/longbridge
+  rm -rf /tmp/lb.deb /tmp/lb
+
+  echo "Operation completed, current version: $latest_stable"
+}

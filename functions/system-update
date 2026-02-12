@@ -1,0 +1,31 @@
+#!/usr/bin/env zsh
+# System update: Flatpak + distribution packages
+
+system-update() {
+    # Flatpak updates
+    echo
+    echo "flatpak update:"
+    echo
+    flatpak update
+    flatpak uninstall --unused --delete-data
+
+    # Detect distribution and run appropriate package manager
+    local ID
+    . /etc/os-release # source with dot, works in both bash and zsh
+
+    if [[ $ID == "debian" ]]; then
+        echo
+        echo "sudo apt update:"
+        echo
+        sudo apt update
+        sudo apt full-upgrade
+    elif [[ $ID == "arch" ]]; then
+        echo
+        echo "paru update:"
+        echo
+        paru -Syu
+    else
+        echo "Unsupported distribution: $ID" >&2
+        return 1
+    fi
+}

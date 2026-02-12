@@ -1,0 +1,55 @@
+os-snap() {
+  local usage="Usage: os-snap [backup|restore|list]"
+  local action="${1:-list}"
+  local suffix="-bak"
+
+  # ---------- 自动获取设备和当前子卷 ----------
+  local root_info current_subvol dev
+  root_info=$(findmnt -n -o SOURCE /)               # e.g. /dev/nvme0n1p2[@debian]
+  dev=${root_info%%\[*}
+  fstype=$(findmnt -n -o FSTYPE /)
+  current_subvol=${${root_info##*\[}%\]}
+  [[ "$current_subvol" == "$root_info" ]] && current_subvol=""
+
+  [[ -b "$dev" ]]             || { echo "Cannot detect root device";    return 1 }
+  [[ "$fstype" == "btrfs" ]]  || { echo "Root filesystem is $fstype, not btrfs"; return 1 }
+  [[ -n "$current_subvol" ]]  || { echo "Cannot detect root subvolume"; return 1 }
+
+  local subvol="${current_subvol%${suffix}}"
+  local target="${subvol}${suffix}"
+
+  # ---------- 挂载 ----------
+  local mnt=$(mktemp -d)
+  trap "sudo umount '$mnt' 2>/dev/null; rmdir '$mnt' 2>/dev/null" EXIT INT TERM
+  _mount() { sudo mount -t btrfs -o subvol=/ "$dev" "$mnt" }
+
+  case "$action" in
+    list)
+      _mount || return 1
+      echo "Subvolumes on \e[33m$dev\e[0m  (booted: \e[32m$current_subvol\e[0m):"
+      sudo btrfs subvolume list "$mnt"
+      ;;
+    backup)
+      [[ "$current_subvol" == "$target" ]] && {
+        echo "\e[31mCurrently booted from $target, cannot overwrite it. Boot into $subvol first.\e[0m"; return 1
+      }
+      echo "Snapshot: \e[32m$subvol\e[0m → \e[33m$target\e[0m"
+      read -q "?Proceed? [y/N] " || { echo "\nAborted."; return 0 }; echo
+      _mount || return 1
+      [[ -d "$mnt/$target" ]] && sudo btrfs subvolume delete "$mnt/$target"
+      sudo btrfs subvolume snapshot "$mnt/$subvol" "$mnt/$target"
+      ;;
+    restore)
+      [[ "$current_subvol" == "$subvol" ]] && {
+        echo "\e[31mCurrently booted from $subvol, cannot overwrite it. Boot into $target first.\e[0m"; return 1
+      }
+      echo "Restore: \e[33m$target\e[0m → \e[32m$subvol\e[0m"
+      echo "\e[31mWARNING: This will DELETE $subvol and replace it with $target.\e[0m"
+      read -q "?Proceed? [y/N] " || { echo "\nAborted."; return 0 }; echo
+      _mount || return 1
+      [[ -d "$mnt/$subvol" ]] && sudo btrfs subvolume delete "$mnt/$subvol"
+      sudo btrfs subvolume snapshot "$mnt/$target" "$mnt/$subvol"
+      ;;
+    *) echo "$usage"; return 1 ;;
+  esac
+}
