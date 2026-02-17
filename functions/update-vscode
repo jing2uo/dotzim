@@ -1,12 +1,76 @@
 #!/usr/bin/env zsh
 # Update VS Code to the latest version
 
+# 下载、解压、安装 VS Code tar.gz 包
+_vscode-download-and-install() {
+  local download_url="$1" tmp_archive="$2" vscode_home="$3"
+
+  echo "Downloading from: $download_url"
+  if command -v axel &>/dev/null; then
+    axel -q -n 4 "$download_url" -o "$tmp_archive" || {
+      echo "axel download failed, falling back to curl..."
+      curl -#L "$download_url" -o "$tmp_archive"
+    }
+  else
+    curl -#L "$download_url" -o "$tmp_archive"
+  fi
+
+  if [[ ! -f "$tmp_archive" ]]; then
+    echo "Download failed (no file)." >&2
+    return 1
+  fi
+
+  if ! tar tzf "$tmp_archive" &>/dev/null; then
+    echo "Downloaded file is not a valid tar.gz archive." >&2
+    rm -f "$tmp_archive"
+    return 1
+  fi
+
+  echo "Download successful, installing..."
+
+  local extract_dir="/tmp/vscode-extract-$$"
+  mkdir -p "$extract_dir"
+  tar xzf "$tmp_archive" -C "$extract_dir"
+
+  if [[ ! -d "$extract_dir/VSCode-linux-x64" ]]; then
+    echo "Extracted directory not found, aborting." >&2
+    rm -rf "$extract_dir" "$tmp_archive"
+    return 1
+  fi
+
+  if [[ -w "$(dirname "$vscode_home")" ]]; then
+    rm -rf "$vscode_home"
+    mv "$extract_dir/VSCode-linux-x64" "$vscode_home"
+  else
+    sudo rm -rf "$vscode_home"
+    sudo mv "$extract_dir/VSCode-linux-x64" "$vscode_home"
+  fi
+
+  rm -rf "$extract_dir" "$tmp_archive"
+  return 0
+}
+
 update-vscode() {
-  # 配置安装目录，优先使用环境变量 VSCODE_HOME，默认为 /opt/code
+  local force=0
+  if [[ "$1" == "-f" ]]; then
+    force=1
+    shift
+  fi
+
   local vscode_home="${VSCODE_HOME:-/opt/code}"
   local bin_path="$vscode_home/bin/code"
 
   echo "Updating VS Code (install location: $vscode_home)..."
+
+  if (( force )); then
+    echo "Force mode: downloading latest tar.gz package..."
+    _vscode-download-and-install \
+      "https://code.visualstudio.com/sha/download?build=stable&os=linux-x64" \
+      "/tmp/vscode-force-latest.tar.gz" \
+      "$vscode_home" || return 1
+    echo "VS Code force-updated at $vscode_home"
+    return 0
+  fi
 
   # 获取本地版本
   local local_ver=""
@@ -31,14 +95,12 @@ update-vscode() {
   fi
   echo "Latest release version: $latest_ver"
 
-  # 版本比较：如果已安装且本地版本不小于最新版本，则退出
+  # 版本比较
   if [[ -n "$local_ver" ]]; then
-    # 利用 zsh 的数字比较（版本号格式如 1.85.0）
     if [[ "$local_ver" == "$latest_ver" ]]; then
       echo "Local version ($local_ver) is already up-to-date."
       return 0
     fi
-    # 简单比较版本先后，这里用 sort -V 更可靠
     local newer=$(printf '%s\n%s\n' "$local_ver" "$latest_ver" | sort -V | tail -1)
     if [[ "$newer" == "$local_ver" ]]; then
       echo "Local version ($local_ver) is newer than latest release ($latest_ver)? Skipping."
@@ -47,57 +109,10 @@ update-vscode() {
     echo "New version available: $latest_ver > $local_ver"
   fi
 
-  # 构造下载 URL
-  local download_url="https://update.code.visualstudio.com/${latest_ver}/linux-x64/stable"
-  local tmp_archive="/tmp/vscode-${latest_ver}.tar.gz"
-
-  echo "Downloading from: $download_url"
-  # 使用 axel 或 curl 下载
-  if command -v axel &>/dev/null; then
-    axel -q -n 4 "$download_url" -o "$tmp_archive" || {
-      echo "axel download failed, falling back to curl..."
-      curl -#L "$download_url" -o "$tmp_archive"
-    }
-  else
-    curl -#L "$download_url" -o "$tmp_archive"
-  fi
-
-  if [[ ! -f "$tmp_archive" ]]; then
-    echo "Download failed (no file). Keeping current installation." >&2
-    return 1
-  fi
-
-  # 验证归档完整性
-  if ! tar tzf "$tmp_archive" &>/dev/null; then
-    echo "Downloaded file is not a valid tar.gz archive. Keeping current installation." >&2
-    rm -f "$tmp_archive"
-    return 1
-  fi
-
-  echo "Download successful, installing..."
-
-  # 解压到临时目录，替换目标安装目录
-  local extract_dir="/tmp/vscode-extract-$$"
-  mkdir -p "$extract_dir"
-  tar xzf "$tmp_archive" -C "$extract_dir"
-
-  if [[ ! -d "$extract_dir/VSCode-linux-x64" ]]; then
-    echo "Extracted directory not found, aborting." >&2
-    rm -rf "$extract_dir" "$tmp_archive"
-    return 1
-  fi
-
-  # 替换安装目录（需要写权限时使用 sudo）
-  if [[ -w "$(dirname "$vscode_home")" ]]; then
-    rm -rf "$vscode_home"
-    mv "$extract_dir/VSCode-linux-x64" "$vscode_home"
-  else
-    sudo rm -rf "$vscode_home"
-    sudo mv "$extract_dir/VSCode-linux-x64" "$vscode_home"
-  fi
-
-  # 清理临时文件
-  rm -rf "$extract_dir" "$tmp_archive"
+  _vscode-download-and-install \
+    "https://update.code.visualstudio.com/${latest_ver}/linux-x64/stable" \
+    "/tmp/vscode-${latest_ver}.tar.gz" \
+    "$vscode_home" || return 1
 
   echo "VS Code updated to $latest_ver at $vscode_home"
   return 0
