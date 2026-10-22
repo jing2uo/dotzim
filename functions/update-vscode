@@ -1,56 +1,11 @@
 #!/usr/bin/env zsh
 # Update VS Code to the latest version
-
-# 下载、解压、安装 VS Code tar.gz 包
-_vscode-download-and-install() {
-  local download_url="$1" tmp_archive="$2" vscode_home="$3"
-
-  echo "Downloading from: $download_url"
-  if command -v axel &>/dev/null; then
-    axel -q -n 4 "$download_url" -o "$tmp_archive" || {
-      echo "axel download failed, falling back to curl..."
-      curl -#L "$download_url" -o "$tmp_archive"
-    }
-  else
-    curl -#L "$download_url" -o "$tmp_archive"
-  fi
-
-  if [[ ! -f "$tmp_archive" ]]; then
-    echo "Download failed (no file)." >&2
-    return 1
-  fi
-
-  if ! tar tzf "$tmp_archive" &>/dev/null; then
-    echo "Downloaded file is not a valid tar.gz archive." >&2
-    rm -f "$tmp_archive"
-    return 1
-  fi
-
-  echo "Download successful, installing..."
-
-  local extract_dir="/tmp/vscode-extract-$$"
-  mkdir -p "$extract_dir"
-  tar xzf "$tmp_archive" -C "$extract_dir"
-
-  if [[ ! -d "$extract_dir/VSCode-linux-x64" ]]; then
-    echo "Extracted directory not found, aborting." >&2
-    rm -rf "$extract_dir" "$tmp_archive"
-    return 1
-  fi
-
-  if [[ -w "$(dirname "$vscode_home")" ]]; then
-    rm -rf "$vscode_home"
-    mv "$extract_dir/VSCode-linux-x64" "$vscode_home"
-  else
-    sudo rm -rf "$vscode_home"
-    sudo mv "$extract_dir/VSCode-linux-x64" "$vscode_home"
-  fi
-
-  rm -rf "$extract_dir" "$tmp_archive"
-  return 0
-}
+#
+# 注意: autoload 文件里只能有这一个函数定义, 否则第一次调用只会定义函数而不执行
 
 update-vscode() {
+  setopt localoptions localtraps
+
   local force=0
   if [[ "$1" == "-f" ]]; then
     force=1
@@ -59,61 +14,98 @@ update-vscode() {
 
   local vscode_home="${VSCODE_HOME:-/opt/code}"
   local bin_path="$vscode_home/bin/code"
+  local download_url latest_ver
 
   echo "Updating VS Code (install location: $vscode_home)..."
 
   if (( force )); then
     echo "Force mode: downloading latest tar.gz package..."
-    _vscode-download-and-install \
-      "https://code.visualstudio.com/sha/download?build=stable&os=linux-x64" \
-      "/tmp/vscode-force-latest.tar.gz" \
-      "$vscode_home" || return 1
-    echo "VS Code force-updated at $vscode_home"
-    return 0
-  fi
-
-  # 获取本地版本
-  local local_ver=""
-  if [[ -x "$bin_path" ]]; then
-    local_ver=$("$bin_path" -v 2>/dev/null | head -1)
-    echo "Local version: $local_ver"
+    latest_ver="latest"
+    download_url="https://code.visualstudio.com/sha/download?build=stable&os=linux-x64"
   else
-    echo "VS Code not installed locally, will install."
+    # 获取本地版本
+    local local_ver=""
+    if [[ -x "$bin_path" ]]; then
+      local_ver=$("$bin_path" -v 2>/dev/null | head -1)
+      echo "Local version: $local_ver"
+    else
+      echo "VS Code not installed locally, will install."
+    fi
+
+    # 从 GitHub 获取最新稳定版版本号
+    echo "Checking latest version from GitHub Releases..."
+    latest_ver=$(curl -fsSL --max-time 15 "https://api.github.com/repos/microsoft/vscode/releases/latest" |
+      grep -o '"tag_name": *"[^"]*"' |
+      head -1 |
+      cut -d'"' -f4)
+
+    if [[ -z "$latest_ver" ]]; then
+      echo "Failed to fetch latest version from GitHub, aborting." >&2
+      return 1
+    fi
+    echo "Latest release version: $latest_ver"
+
+    # 版本比较
+    if [[ -n "$local_ver" ]]; then
+      if [[ "$local_ver" == "$latest_ver" ]]; then
+        echo "Local version ($local_ver) is already up-to-date."
+        return 0
+      fi
+      local newer=$(printf '%s\n%s\n' "$local_ver" "$latest_ver" | sort -V | tail -1)
+      if [[ "$newer" == "$local_ver" ]]; then
+        echo "Local version ($local_ver) is newer than latest release ($latest_ver)? Skipping."
+        return 0
+      fi
+      echo "New version available: $latest_ver > $local_ver"
+    fi
+
+    download_url="https://update.code.visualstudio.com/${latest_ver}/linux-x64/stable"
   fi
 
-  # 从 GitHub 获取最新稳定版版本号
-  echo "Checking latest version from GitHub Releases..."
-  local latest_ver
-  latest_ver=$(curl -sL "https://api.github.com/repos/microsoft/vscode/releases/latest" |
-    grep -o '"tag_name": *"[^"]*"' |
-    head -1 |
-    cut -d'"' -f4)
+  # 临时目录, 函数退出时 (包括 Ctrl-C) 自动清理
+  local work_dir
+  work_dir=$(mktemp -d /tmp/vscode-update.XXXXXX) || return 1
+  trap "rm -rf '$work_dir'" EXIT
+  local tmp_archive="$work_dir/vscode.tar.gz"
 
-  if [[ -z "$latest_ver" ]]; then
-    echo "Failed to fetch latest version from GitHub, aborting." >&2
+  # 下载
+  echo "Downloading from: $download_url"
+  if (( $+commands[axel] )); then
+    axel -q -n 4 "$download_url" -o "$tmp_archive" || {
+      echo "axel download failed, falling back to curl..."
+      rm -f "$tmp_archive" "$tmp_archive.st"
+      curl -f#L "$download_url" -o "$tmp_archive"
+    }
+  else
+    curl -f#L "$download_url" -o "$tmp_archive"
+  fi
+
+  if [[ ! -s "$tmp_archive" ]]; then
+    echo "Download failed (no file)." >&2
     return 1
   fi
-  echo "Latest release version: $latest_ver"
 
-  # 版本比较
-  if [[ -n "$local_ver" ]]; then
-    if [[ "$local_ver" == "$latest_ver" ]]; then
-      echo "Local version ($local_ver) is already up-to-date."
-      return 0
-    fi
-    local newer=$(printf '%s\n%s\n' "$local_ver" "$latest_ver" | sort -V | tail -1)
-    if [[ "$newer" == "$local_ver" ]]; then
-      echo "Local version ($local_ver) is newer than latest release ($latest_ver)? Skipping."
-      return 0
-    fi
-    echo "New version available: $latest_ver > $local_ver"
+  # 解压 (同时校验压缩包)
+  echo "Download successful, installing..."
+  if ! tar xzf "$tmp_archive" -C "$work_dir" || [[ ! -d "$work_dir/VSCode-linux-x64" ]]; then
+    echo "Downloaded file is not a valid VS Code tar.gz archive, aborting." >&2
+    return 1
   fi
 
-  _vscode-download-and-install \
-    "https://update.code.visualstudio.com/${latest_ver}/linux-x64/stable" \
-    "/tmp/vscode-${latest_ver}.tar.gz" \
-    "$vscode_home" || return 1
+  # 先把旧版本挪开, 新版本就位后再删除, 失败时回滚
+  local sudo_cmd=()
+  [[ -w "${vscode_home:h}" ]] || sudo_cmd=(sudo)
+  local backup="${vscode_home}.old-$$"
+
+  if [[ -e "$vscode_home" ]]; then
+    $sudo_cmd mv "$vscode_home" "$backup" || return 1
+  fi
+  if ! $sudo_cmd mv "$work_dir/VSCode-linux-x64" "$vscode_home"; then
+    echo "Install failed, restoring previous version." >&2
+    [[ -e "$backup" ]] && $sudo_cmd mv "$backup" "$vscode_home"
+    return 1
+  fi
+  [[ -e "$backup" ]] && $sudo_cmd rm -rf "$backup"
 
   echo "VS Code updated to $latest_ver at $vscode_home"
-  return 0
 }

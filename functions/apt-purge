@@ -1,5 +1,5 @@
 apt-purge() {
-  local entries
+  local entries f
   entries=$(
     {
       for f in /var/log/apt/history.log.*(NnOn); do
@@ -41,7 +41,7 @@ apt-purge() {
 
     # 展开范围表达式 (如 7-9 → 7 8 9)
     local -a indices=()
-    local token
+    local token j
     for token in ${(s:,:)input// /,}; do
       if [[ "$token" == *-* ]]; then
         local lo=${token%%-*} hi=${token##*-}

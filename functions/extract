@@ -49,29 +49,6 @@ EOF
     'xz'        'unxz xz'
   )
 
-  # Resolve file extension to a dependency key
-  _extract_dep_key() {
-    local file="${1:l}"
-    case "$file" in
-      (*.tar.lrz)  echo tar.lrz ;;
-      (*.tar.lz)   echo tar.lz ;;
-      (*.tar.lz4)  echo lz4 ;;
-      (*.tar.zst|*.tzst) echo zst ;;
-      (*.rar)      echo rar ;;
-      (*.7z|*.7z.[0-9]*|*.pk7) echo 7z ;;
-      (*.lz4)      echo lz4 ;;
-      (*.lrz)      echo lrz ;;
-      (*.zip|*.war|*.jar|*.ear|*.sublime-package|*.ipa|*.ipsw|*.xpi|*.apk|*.aar|*.whl|*.vsix|*.crx|*.pk3|*.pk4) echo zip ;;
-      (*.rpm)      echo rpm ;;
-      (*.cab|*.exe) echo cab ;;
-      (*.zpaq)     echo zpaq ;;
-      (*.zlib)     echo zlib ;;
-      (*.zst)      echo zst ;;
-      (*.xz|*.tar.xz|*.txz) echo xz ;;
-      (*)          ;; # no special dependency
-    esac
-  }
-
   local pwd="$PWD"
   while (( $# > 0 )); do
     if [[ ! -f "$1" ]]; then
@@ -81,10 +58,28 @@ EOF
     fi
 
     # --- Check dependencies ---
-    local dep_key="$(_extract_dep_key "$1")"
+    local dep_key=""
+    case "${1:l}" in
+      (*.tar.lrz)  dep_key=tar.lrz ;;
+      (*.tar.lz)   dep_key=tar.lz ;;
+      (*.tar.lz4)  dep_key=lz4 ;;
+      (*.tar.zst|*.tzst) dep_key=zst ;;
+      (*.rar)      dep_key=rar ;;
+      (*.7z|*.7z.[0-9]*|*.pk7) dep_key=7z ;;
+      (*.lz4)      dep_key=lz4 ;;
+      (*.lrz)      dep_key=lrz ;;
+      (*.zip|*.war|*.jar|*.ear|*.sublime-package|*.ipa|*.ipsw|*.xpi|*.apk|*.aar|*.whl|*.vsix|*.crx|*.pk3|*.pk4) dep_key=zip ;;
+      (*.rpm)      dep_key=rpm ;;
+      (*.cab|*.exe) dep_key=cab ;;
+      (*.zpaq)     dep_key=zpaq ;;
+      (*.zlib)     dep_key=zlib ;;
+      (*.zst)      dep_key=zst ;;
+      (*.xz|*.tar.xz|*.txz) dep_key=xz ;;
+      (*)          ;; # no special dependency
+    esac
     if [[ -n "$dep_key" && -n "${_extract_deps[$dep_key]}" ]]; then
       local -a candidates=( ${(s: :)_extract_deps[$dep_key]} )
-      local found=0
+      local found=0 cmd
       for cmd in "${candidates[@]}"; do
         (( $+commands[$cmd] )) && { found=1; break }
       done

@@ -1,10 +1,12 @@
 os-snap() {
+  setopt localoptions localtraps
+
   local usage="Usage: os-snap [backup|restore|list]"
   local action="${1:-list}"
   local suffix="-bak"
 
   # ---------- 自动获取设备和当前子卷 ----------
-  local root_info current_subvol dev
+  local root_info current_subvol dev fstype
   root_info=$(findmnt -n -o SOURCE /)               # e.g. /dev/nvme0n1p2[@debian]
   dev=${root_info%%\[*}
   fstype=$(findmnt -n -o FSTYPE /)
@@ -21,11 +23,11 @@ os-snap() {
   # ---------- 挂载 ----------
   local mnt=$(mktemp -d)
   trap "sudo umount '$mnt' 2>/dev/null; rmdir '$mnt' 2>/dev/null" EXIT INT TERM
-  _mount() { sudo mount -t btrfs -o subvol=/ "$dev" "$mnt" }
+  local -a mount_cmd=(sudo mount -t btrfs -o subvol=/ "$dev" "$mnt")
 
   case "$action" in
     list)
-      _mount || return 1
+      $mount_cmd || return 1
       echo "Subvolumes on \e[33m$dev\e[0m  (booted: \e[32m$current_subvol\e[0m):"
       sudo btrfs subvolume list "$mnt"
       ;;
@@ -35,7 +37,7 @@ os-snap() {
       }
       echo "Snapshot: \e[32m$subvol\e[0m → \e[33m$target\e[0m"
       read -q "?Proceed? [y/N] " || { echo "\nAborted."; return 0 }; echo
-      _mount || return 1
+      $mount_cmd || return 1
       [[ -d "$mnt/$target" ]] && sudo btrfs subvolume delete "$mnt/$target"
       sudo btrfs subvolume snapshot "$mnt/$subvol" "$mnt/$target"
       ;;
@@ -46,7 +48,7 @@ os-snap() {
       echo "Restore: \e[33m$target\e[0m → \e[32m$subvol\e[0m"
       echo "\e[31mWARNING: This will DELETE $subvol and replace it with $target.\e[0m"
       read -q "?Proceed? [y/N] " || { echo "\nAborted."; return 0 }; echo
-      _mount || return 1
+      $mount_cmd || return 1
       [[ -d "$mnt/$subvol" ]] && sudo btrfs subvolume delete "$mnt/$subvol"
       sudo btrfs subvolume snapshot "$mnt/$target" "$mnt/$subvol"
       ;;

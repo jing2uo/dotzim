@@ -4,6 +4,7 @@ ecode() {
         # 如果没有参数，从标准输入读取
         base64
     else
-        echo "$1" | base64
+        # print -rn: 不追加换行, 不解释反斜杠 (zsh 的 echo 会)
+        print -rn -- "$1" | base64
     fi
 }

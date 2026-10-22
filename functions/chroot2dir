@@ -16,7 +16,7 @@ EOF
     return 1
   fi
 
-  local failed=0
+  local failed=0 d
   for d in proc dev sys etc; do
     if [[ ! -d "$DIR/$d" ]]; then
       echo "error: $DIR/$d not found"

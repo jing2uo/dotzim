@@ -3,6 +3,6 @@ dcode() {
 		# 如果没有参数，从标准输入读取
 		base64 -d
 	else
-		echo "$1" | base64 -d
+		print -r -- "$1" | base64 -d
 	fi
 }

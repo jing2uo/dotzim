@@ -6,7 +6,7 @@ system-update() {
     echo "mise update:"
     echo
     mise cache clear
-    mise self-update
+    sudo mise self-update
     mise upgrade --bump
 
     # Flatpak updates
@@ -17,15 +17,14 @@ system-update() {
     flatpak uninstall --unused --delete-data
 
     # Detect distribution and run appropriate package manager
-    local ID
-    . /etc/os-release
+    # 在子 shell 里 source, 避免 NAME/VERSION 等变量泄漏到当前 shell
+    local ID=$(. /etc/os-release && print -r -- $ID)
 
     if [[ $ID == "debian" ]]; then
         echo
         echo "sudo apt update:"
         echo
-        sudo apt update
-        sudo apt full-upgrade
+        sudo apt -U upgrade
     elif [[ $ID == "arch" ]]; then
         echo
         echo "paru update:"

@@ -23,18 +23,14 @@ system-cleanup() {
         vim.desktop
         nvim.desktop
     )
-    for f in $sys_desktop; do
-        sudo find /usr/share/applications -name "$f" -exec rm -f {} +
-    done
+    sudo rm -f /usr/share/applications/${^sys_desktop}
 
     # === 3. 删除 Flatpak 导出的 .desktop 文件 ===
     echo "Removing unwanted Flatpak .desktop files..."
     local -a flatpak_desktop=(
         cn.wps.wps_365.xiezuo.desktop
     )
-    for f in $flatpak_desktop; do
-        find "$HOME/.local/share/flatpak/exports/share/applications" -name "$f" -exec rm -f {} +
-    done
+    rm -f "$HOME/.local/share/flatpak/exports/share/applications"/${^flatpak_desktop}
 
     # === 4. 清理 ~/.cache 下各种构建/缓存目录 ===
     echo "Cleaning cache directories..."
@@ -59,7 +55,7 @@ system-cleanup() {
 
     # === 5. 删除 ~/Downloads 下所有 PNG 截图 ===
     echo "Removing PNG files from Downloads..."
-    rm -f "$HOME/Downloads"/*.png
+    rm -f "$HOME/Downloads"/*.png(N) # (N) 避免无匹配时 zsh 报错并中断
 
     echo "System cleanup completed."
 }
